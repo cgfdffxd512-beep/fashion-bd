@@ -1,0 +1,8 @@
+{
+  "name": "Aavijatya — Customizable E-Commerce & Admin CMS",
+  "description": "সম্পূর্ণ কাস্টমাইজেবল ই-কমার্স স্টোরফ্রন্ট এবং কোডিং ছাড়াই পরিচালনাযোগ্য অ্যাডমিন ড্যাশবোর্ড।",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

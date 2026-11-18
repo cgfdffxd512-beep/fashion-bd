@@ -1,0 +1,227 @@
+{
+  "entities": {
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Complete store branding, theme, homepage hero/offers, payment numbers, delivery fees, and SEO settings.",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "tagline": { "type": "string", "maxLength": 160 },
+        "logoUrl": { "type": "string", "maxLength": 350000 },
+        "profileImageUrl": { "type": "string", "maxLength": 350000 },
+        "ownerName": { "type": "string", "maxLength": 80 },
+        "themeMode": { "type": "string", "enum": ["light", "dark"] },
+        "primaryColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "maxLength": 7 },
+        "accentColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "maxLength": 7 },
+        "surfaceStyle": { "type": "string", "enum": ["crisp", "warm", "slate"] },
+        "layoutStyle": { "type": "string", "enum": ["grid", "editorial", "compact"] },
+        "fontStyle": { "type": "string", "enum": ["modern", "editorial", "minimal"] },
+        "borderRadius": { "type": "string", "enum": ["sharp", "rounded", "soft"] },
+        "announcementEnabled": { "type": "boolean" },
+        "announcementText": { "type": "string", "maxLength": 160 },
+        "heroTitle": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "heroSubtitle": { "type": "string", "maxLength": 320 },
+        "heroCtaText": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "heroImageUrl": { "type": "string", "maxLength": 350000 },
+        "offerEnabled": { "type": "boolean" },
+        "offerTitle": { "type": "string", "maxLength": 120 },
+        "offerSubtitle": { "type": "string", "maxLength": 300 },
+        "offerBadgeText": { "type": "string", "maxLength": 40 },
+        "offerDiscountCode": { "type": "string", "maxLength": 30 },
+        "offerImageUrl": { "type": "string", "maxLength": 350000 },
+        "bkashNumber": { "type": "string", "maxLength": 30 },
+        "nagadNumber": { "type": "string", "maxLength": 30 },
+        "rocketNumber": { "type": "string", "maxLength": 30 },
+        "whatsappNumber": { "type": "string", "maxLength": 30 },
+        "phoneNumber": { "type": "string", "maxLength": 30 },
+        "contactEmail": { "type": "string", "maxLength": 100 },
+        "storeAddress": { "type": "string", "maxLength": 240 },
+        "websiteUrl": { "type": "string", "maxLength": 200 },
+        "deliveryInsideDhaka": { "type": "number" },
+        "deliveryOutsideDhaka": { "type": "number" },
+        "freeDeliveryMinAmount": { "type": "number" },
+        "codEnabled": { "type": "boolean" },
+        "paymentInstructions": { "type": "string", "maxLength": 400 },
+        "currencySymbol": { "type": "string", "minLength": 1, "maxLength": 10 },
+        "seoTitle": { "type": "string", "maxLength": 100 },
+        "seoDescription": { "type": "string", "maxLength": 260 },
+        "seoKeywords": { "type": "string", "maxLength": 260 },
+        "ogImageUrl": { "type": "string", "maxLength": 350000 },
+        "footerAbout": { "type": "string", "maxLength": 300 },
+        "footerCopyright": { "type": "string", "maxLength": 120 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "siteName",
+        "themeMode",
+        "primaryColor",
+        "accentColor",
+        "layoutStyle",
+        "heroTitle",
+        "heroCtaText",
+        "deliveryInsideDhaka",
+        "deliveryOutsideDhaka",
+        "currencySymbol",
+        "updatedAt"
+      ]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product category managed from the Admin Dashboard.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "slug": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "description": { "type": "string", "maxLength": 200 },
+        "imageUrl": { "type": "string", "maxLength": 350000 },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug", "sortOrder", "isActive", "createdAt", "updatedAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Storefront product with pricing, discounts, sizes, colors, and stock count.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "sku": { "type": "string", "maxLength": 40 },
+        "categoryId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "categoryName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "price": { "type": "number" },
+        "discountPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "sizes": { "type": "array" },
+        "colors": { "type": "array" },
+        "imageUrl": { "type": "string", "maxLength": 350000 },
+        "featured": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "categoryId", "categoryName", "price", "discountPrice", "stock", "sizes", "colors", "featured", "isActive", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order with line items, shipping info, bKash/Nagad/COD payment details, and status.",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "customerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "customerPhone": { "type": "string", "minLength": 6, "maxLength": 25 },
+        "customerEmail": { "type": "string", "maxLength": 120 },
+        "shippingAddress": { "type": "string", "minLength": 3, "maxLength": 300 },
+        "deliveryZone": { "type": "string", "enum": ["inside_dhaka", "outside_dhaka"] },
+        "paymentMethod": { "type": "string", "enum": ["cod", "bkash", "nagad", "rocket"] },
+        "paymentSenderNumber": { "type": "string", "maxLength": 30 },
+        "paymentTrxId": { "type": "string", "maxLength": 60 },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "deliveryCharge": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"] },
+        "customerNote": { "type": "string", "maxLength": 300 },
+        "adminNote": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "orderNumber",
+        "customerUid",
+        "customerName",
+        "customerPhone",
+        "shippingAddress",
+        "deliveryZone",
+        "paymentMethod",
+        "items",
+        "subtotal",
+        "deliveryCharge",
+        "discountAmount",
+        "totalAmount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomerRecord": {
+      "title": "CustomerRecord",
+      "description": "Admin-managed customer profile and CRM notes.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "phone": { "type": "string", "minLength": 6, "maxLength": 25 },
+        "email": { "type": "string", "maxLength": 120 },
+        "address": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone", "createdAt", "updatedAt"]
+    },
+    "CustomPage": {
+      "title": "CustomPage",
+      "description": "Editable storefront page and navigation menu item.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "slug": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "content": { "type": "string", "maxLength": 8000 },
+        "showInHeader": { "type": "boolean" },
+        "showInFooter": { "type": "boolean" },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "content", "showInHeader", "showInFooter", "sortOrder", "isActive", "createdAt", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized admin account granted by the website owner.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 120 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "role": { "type": "string", "enum": ["owner", "admin"] },
+        "addedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "name", "role", "addedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Global storefront and business configuration (document id: site)."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Storefront product categories."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Storefront products catalog."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer orders with PII protected from public reads."
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/CustomerRecord" },
+      "description": "Admin-only customer CRM directory."
+    },
+    "/pages/{pageId}": {
+      "schema": { "$ref": "#/entities/CustomPage" },
+      "description": "Dynamic storefront pages and navigation menu entries."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Delegated admin users managed by the verified owner."
+    }
+  }
+}

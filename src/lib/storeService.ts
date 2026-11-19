@@ -170,6 +170,40 @@ export async function ensureSeededStoreData(): Promise<void> {
   }
 }
 
+export async function applyFashionBdPreset(): Promise<void> {
+  const settingsRef = doc(db, 'settings', 'site');
+  try {
+    const batch = writeBatch(db);
+    const { updatedAt: _u, ...settingsClean } = DEFAULT_SETTINGS;
+    batch.set(settingsRef, {
+      ...settingsClean,
+      updatedAt: serverTimestamp(),
+    });
+
+    for (const cat of DEFAULT_CATEGORIES) {
+      const { id, createdAt: _c, updatedAt: _cu, ...catData } = cat;
+      batch.set(doc(db, 'categories', id), {
+        ...catData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    for (const prod of DEFAULT_PRODUCTS) {
+      const { id, createdAt: _c, updatedAt: _pu, ...prodData } = prod;
+      batch.set(doc(db, 'products', id), {
+        ...prodData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'settings/site');
+  }
+}
+
 // --- Admin Settings Write ---
 export async function saveSiteSettings(settings: SiteSettings): Promise<void> {
   const ref = doc(db, 'settings', 'site');

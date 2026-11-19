@@ -21,7 +21,10 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { saveSiteSettings } from '../lib/storeService';
+import {
+  applyFashionBdPreset,
+  saveSiteSettings,
+} from '../lib/storeService';
 import type {
   AdminUser,
   BorderRadiusStyle,
@@ -70,6 +73,7 @@ interface AdminDashboardProps {
 }
 
 const COLOR_PRESETS = [
+  { name: 'Fashion BD অরেঞ্জ-পিংক', primary: '#F97316', accent: '#DB2777' },
   { name: 'বটল গ্রিন', primary: '#0D4F3C', accent: '#B45309' },
   { name: 'মিডনাইট নেভি', primary: '#1E293B', accent: '#2563EB' },
   { name: 'রয়্যাল ইন্ডিগো', primary: '#312E81', accent: '#D97706' },
@@ -352,11 +356,38 @@ export function AdminDashboard({
           {/* TAB: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-8">
-              <div>
-                <h1 className="text-2xl font-bold">স্বাগতম, {settings.ownerName || 'অ্যাডমিন'}</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  এখান থেকে কোডিং ছাড়াই আপনার সম্পূর্ণ ওয়েবসাইট, পণ্য, অর্ডার ও ডিজাইন পরিচালনা করুন।
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold">স্বাগতম, {settings.ownerName || 'অ্যাডমিন'}</h1>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    এখান থেকে কোডিং ছাড়াই আপনার সম্পূর্ণ ওয়েবসাইট, পণ্য, অর্ডার ও ডিজাইন পরিচালনা করুন।
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    setSaving(true);
+                    setSaveError('');
+                    try {
+                      await applyFashionBdPreset();
+                      setSavedNotice(true);
+                      setTimeout(() => setSavedNotice(false), 3000);
+                    } catch (err) {
+                      setSaveError(
+                        err instanceof Error
+                          ? err.message
+                          : 'টেমপ্লেট লোড করা যায়নি।'
+                      );
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/40 text-orange-800 dark:text-orange-200 hover:bg-orange-100 dark:hover:bg-orange-900/50 whitespace-nowrap shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Fashion BD থিম ও ক্যাটাগরি লোড করুন
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

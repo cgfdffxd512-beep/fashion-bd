@@ -1,5 +1,6 @@
 import { Edit3, FolderPlus, Plus, Search, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
+import { formatFirestoreUiError } from '../../lib/firebase';
 import {
   removeCategory,
   removeProduct,
@@ -27,6 +28,7 @@ export function CatalogManager({
   const [catFilter, setCatFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Product Form Modal State
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -93,6 +95,7 @@ export function CatalogManager({
     if (!pName.trim()) return;
     setSaving(true);
     setFeedback('');
+    setErrorMsg('');
     try {
       const cat = categories.find((c) => c.id === pCategoryId);
       await saveProduct(
@@ -121,6 +124,8 @@ export function CatalogManager({
       );
       setProductModalOpen(false);
       setFeedback('পণ্যটি সফলভাবে সংরক্ষণ করা হয়েছে।');
+    } catch (err) {
+      setErrorMsg(formatFirestoreUiError(err, 'পণ্যটি সংরক্ষণ করা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -128,9 +133,12 @@ export function CatalogManager({
 
   const handleDeleteProduct = async (id: string) => {
     setSaving(true);
+    setErrorMsg('');
     try {
       await removeProduct(id);
       setFeedback('পণ্যটি মুছে ফেলা হয়েছে।');
+    } catch (err) {
+      setErrorMsg(formatFirestoreUiError(err, 'পণ্যটি মুছে ফেলা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -144,6 +152,7 @@ export function CatalogManager({
     setCImageUrl('');
     setCSortOrder(String(categories.length + 1));
     setCIsActive(true);
+    setErrorMsg('');
     setCatModalOpen(true);
   };
 
@@ -155,6 +164,7 @@ export function CatalogManager({
     setCImageUrl(c.imageUrl);
     setCSortOrder(String(c.sortOrder));
     setCIsActive(c.isActive);
+    setErrorMsg('');
     setCatModalOpen(true);
   };
 
@@ -163,6 +173,7 @@ export function CatalogManager({
     if (!cName.trim()) return;
     setSaving(true);
     setFeedback('');
+    setErrorMsg('');
     try {
       await saveCategory(
         {
@@ -177,6 +188,8 @@ export function CatalogManager({
       );
       setCatModalOpen(false);
       setFeedback('ক্যাটাগরি সফলভাবে সংরক্ষণ করা হয়েছে।');
+    } catch (err) {
+      setErrorMsg(formatFirestoreUiError(err, 'ক্যাটাগরি সংরক্ষণ করা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -184,9 +197,12 @@ export function CatalogManager({
 
   const handleDeleteCategory = async (id: string) => {
     setSaving(true);
+    setErrorMsg('');
     try {
       await removeCategory(id);
       setFeedback('ক্যাটাগরি মুছে ফেলা হয়েছে।');
+    } catch (err) {
+      setErrorMsg(formatFirestoreUiError(err, 'ক্যাটাগরি মুছে ফেলা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -226,6 +242,11 @@ export function CatalogManager({
         {feedback && (
           <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300">
             {feedback}
+          </div>
+        )}
+        {errorMsg && (
+          <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
+            {errorMsg}
           </div>
         )}
 
@@ -435,6 +456,11 @@ export function CatalogManager({
       {feedback && (
         <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300">
           {feedback}
+        </div>
+      )}
+      {errorMsg && (
+        <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
+          {errorMsg}
         </div>
       )}
 

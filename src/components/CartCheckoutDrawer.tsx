@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { formatFirestoreUiError } from '../lib/firebase';
 import { placeCustomerOrder } from '../lib/storeService';
 import type {
   CartItem,
@@ -148,9 +149,10 @@ export function CartCheckoutDrawer({
       setStep('receipt');
     } catch (err) {
       setSubmitError(
-        err instanceof Error
-          ? err.message
-          : 'অর্ডার জমা দিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
+        formatFirestoreUiError(
+          err,
+          'অর্ডার জমা দিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
+        )
       );
     } finally {
       setSubmitting(false);

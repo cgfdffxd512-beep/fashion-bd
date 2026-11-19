@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth';
 import { Edit3, FilePlus, ShieldCheck, Trash2, UserPlus, X } from 'lucide-react';
 import { useState } from 'react';
-import { OWNER_EMAIL } from '../../lib/firebase';
+import { formatFirestoreUiError, OWNER_EMAIL } from '../../lib/firebase';
 import {
   addAdminUser,
   removeAdminUser,
@@ -74,6 +74,7 @@ export function PagesAndAccessManager({
     if (!pTitle.trim()) return;
     setSaving(true);
     setFeedback('');
+    setErrorMsg('');
     try {
       await saveCustomPage(
         {
@@ -89,6 +90,8 @@ export function PagesAndAccessManager({
       );
       setPageModalOpen(false);
       setFeedback('পেজ ও মেনু সফলভাবে সংরক্ষিত হয়েছে।');
+    } catch (err) {
+      setErrorMsg(formatFirestoreUiError(err, 'পেজ সংরক্ষণ করা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -111,9 +114,7 @@ export function PagesAndAccessManager({
       setNewAdminName('');
       setFeedback('নতুন অ্যাডমিন অ্যাক্সেস যুক্ত করা হয়েছে।');
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : 'অ্যাডমিন যুক্ত করা যায়নি।'
-      );
+      setErrorMsg(formatFirestoreUiError(err, 'অ্যাডমিন যুক্ত করা যায়নি।'));
     } finally {
       setSaving(false);
     }

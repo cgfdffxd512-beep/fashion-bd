@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromCache,
   onSnapshot,
   orderBy,
   query,
@@ -11,6 +12,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentReference,
   type Unsubscribe,
 } from 'firebase/firestore';
 import {
@@ -27,7 +29,56 @@ import {
   type Product,
   type SiteSettings,
 } from '../types/store';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import {
+  db,
+  handleFirestoreError,
+  isQuotaExceededError,
+  OperationType,
+} from './firebase';
+
+type QuotaCallback = () => void;
+
+function readCache<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeCache(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function getTimestampMillis(ts: unknown): number {
+  if (!ts) return 0;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'object' && 'toMillis' in ts && typeof (ts as { toMillis: () => number }).toMillis === 'function') {
+    return (ts as { toMillis: () => number }).toMillis();
+  }
+  if (typeof ts === 'object' && 'seconds' in ts && typeof (ts as { seconds: number }).seconds === 'number') {
+    return (ts as { seconds: number }).seconds * 1000;
+  }
+  return 0;
+}
+
+async function getExistingCreatedAt(ref: DocumentReference): Promise<unknown> {
+  try {
+    const cached = await getDocFromCache(ref);
+    if (cached.exists() && cached.data()?.createdAt) {
+      return cached.data().createdAt;
+    }
+  } catch {
+    // Cache miss; fall back to server getDoc
+  }
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data()?.createdAt || serverTimestamp() : serverTimestamp();
+}
 
 export function slugifyId(input: string, prefix = 'item'): string {
   const cleaned = input
@@ -41,83 +92,124 @@ export function slugifyId(input: string, prefix = 'item'): string {
 
 // --- Public Storefront Subscriptions ---
 export function subscribeSiteSettings(
-  onData: (settings: SiteSettings) => void
+  onData: (settings: SiteSettings) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
   const ref = doc(db, 'settings', 'site');
   return onSnapshot(
     ref,
     (snap) => {
       if (snap.exists()) {
-        onData({ ...DEFAULT_SETTINGS, ...(snap.data() as SiteSettings) });
+        const merged = { ...DEFAULT_SETTINGS, ...(snap.data() as SiteSettings) };
+        writeCache('fbd_cache_settings', merged);
+        onData(merged);
       } else {
-        onData(DEFAULT_SETTINGS);
+        onData(readCache('fbd_cache_settings', DEFAULT_SETTINGS));
       }
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_settings', DEFAULT_SETTINGS));
+        return;
+      }
       console.warn('Settings listener fallback:', error.message);
-      onData(DEFAULT_SETTINGS);
+      onData(readCache('fbd_cache_settings', DEFAULT_SETTINGS));
     }
   );
 }
 
 export function subscribeCategories(
-  onData: (categories: Category[]) => void
+  onData: (categories: Category[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
-  const q = query(collection(db, 'categories'), orderBy('sortOrder', 'asc'));
+  const q = query(collection(db, 'categories'));
   return onSnapshot(
     q,
     (snap) => {
       if (snap.empty) {
-        onData(DEFAULT_CATEGORIES);
+        onData(readCache('fbd_cache_categories', DEFAULT_CATEGORIES));
       } else {
-        onData(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Category, 'id'>) }))
-        );
+        const list = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<Category, 'id'>),
+          }))
+          .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+        writeCache('fbd_cache_categories', list);
+        onData(list);
       }
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_categories', DEFAULT_CATEGORIES));
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'categories');
     }
   );
 }
 
 export function subscribeProducts(
-  onData: (products: Product[]) => void
+  onData: (products: Product[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
-  const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+  const q = query(collection(db, 'products'));
   return onSnapshot(
     q,
     (snap) => {
       if (snap.empty) {
-        onData(DEFAULT_PRODUCTS);
+        onData(readCache('fbd_cache_products', DEFAULT_PRODUCTS));
       } else {
-        onData(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Product, 'id'>) }))
-        );
+        const list = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<Product, 'id'>),
+          }))
+          .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt));
+        writeCache('fbd_cache_products', list);
+        onData(list);
       }
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_products', DEFAULT_PRODUCTS));
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'products');
     }
   );
 }
 
 export function subscribePages(
-  onData: (pages: CustomPage[]) => void
+  onData: (pages: CustomPage[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
-  const q = query(collection(db, 'pages'), orderBy('sortOrder', 'asc'));
+  const q = query(collection(db, 'pages'));
   return onSnapshot(
     q,
     (snap) => {
       if (snap.empty) {
-        onData(DEFAULT_PAGES);
+        onData(readCache('fbd_cache_pages', DEFAULT_PAGES));
       } else {
-        onData(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomPage, 'id'>) }))
-        );
+        const list = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<CustomPage, 'id'>),
+          }))
+          .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+        writeCache('fbd_cache_pages', list);
+        onData(list);
       }
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_pages', DEFAULT_PAGES));
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'pages');
     }
   );
@@ -166,6 +258,10 @@ export async function ensureSeededStoreData(): Promise<void> {
 
     await batch.commit();
   } catch (error) {
+    if (isQuotaExceededError(error)) {
+      console.warn('Firestore quota exceeded during initial seed check.');
+      return;
+    }
     handleFirestoreError(error, OperationType.WRITE, 'settings/site');
   }
 }
@@ -283,31 +379,27 @@ export async function saveCategory(
       .slice(0, 60) || id;
 
   try {
-    if (existingId) {
-      const snap = await getDoc(ref);
-      const createdAt = snap.exists() ? snap.data().createdAt : serverTimestamp();
-      await setDoc(ref, {
-        name: category.name.trim().slice(0, 60),
-        slug: safeSlug,
-        description: category.description.trim().slice(0, 200),
-        imageUrl: category.imageUrl.slice(0, 350000),
-        sortOrder: Math.max(0, Number(category.sortOrder) || 0),
-        isActive: Boolean(category.isActive),
-        createdAt,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(ref, {
-        name: category.name.trim().slice(0, 60),
-        slug: safeSlug,
-        description: category.description.trim().slice(0, 200),
-        imageUrl: category.imageUrl.slice(0, 350000),
-        sortOrder: Math.max(0, Number(category.sortOrder) || 0),
-        isActive: Boolean(category.isActive),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    const cleanData = {
+      name: category.name.trim().slice(0, 60),
+      slug: safeSlug,
+      description: category.description.trim().slice(0, 200),
+      imageUrl: category.imageUrl.slice(0, 350000),
+      sortOrder: Math.max(0, Number(category.sortOrder) || 0),
+      isActive: Boolean(category.isActive),
+    };
+    const createdAt = existingId
+      ? await getExistingCreatedAt(ref)
+      : serverTimestamp();
+    await setDoc(ref, {
+      ...cleanData,
+      createdAt,
+      updatedAt: serverTimestamp(),
+    });
+    const cached = readCache<Category[]>('fbd_cache_categories', DEFAULT_CATEGORIES);
+    const updated = existingId
+      ? cached.map((c) => (c.id === id ? { ...c, ...cleanData, id } : c))
+      : [...cached, { ...cleanData, id }];
+    writeCache('fbd_cache_categories', updated);
     return id;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `categories/${id}`);
@@ -317,6 +409,11 @@ export async function saveCategory(
 export async function removeCategory(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'categories', id));
+    const cached = readCache<Category[]>('fbd_cache_categories', DEFAULT_CATEGORIES);
+    writeCache(
+      'fbd_cache_categories',
+      cached.filter((c) => c.id !== id)
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `categories/${id}`);
   }
@@ -334,11 +431,7 @@ export async function saveProduct(
   const discountPrice = rawDiscount > price ? price : rawDiscount;
 
   try {
-    const snap = existingId ? await getDoc(ref) : null;
-    const createdAt =
-      snap && snap.exists() ? snap.data().createdAt : serverTimestamp();
-
-    await setDoc(ref, {
+    const cleanData = {
       name: product.name.trim().slice(0, 120),
       sku: product.sku.trim().slice(0, 40),
       categoryId: product.categoryId.trim().slice(0, 128),
@@ -352,9 +445,21 @@ export async function saveProduct(
       imageUrl: product.imageUrl.slice(0, 350000),
       featured: Boolean(product.featured),
       isActive: Boolean(product.isActive),
+    };
+    const createdAt = existingId
+      ? await getExistingCreatedAt(ref)
+      : serverTimestamp();
+
+    await setDoc(ref, {
+      ...cleanData,
       createdAt,
       updatedAt: serverTimestamp(),
     });
+    const cached = readCache<Product[]>('fbd_cache_products', DEFAULT_PRODUCTS);
+    const updated = existingId
+      ? cached.map((p) => (p.id === id ? { ...p, ...cleanData, id } : p))
+      : [{ ...cleanData, id, createdAt: new Date() }, ...cached];
+    writeCache('fbd_cache_products', updated);
     return id;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `products/${id}`);
@@ -364,6 +469,11 @@ export async function saveProduct(
 export async function removeProduct(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'products', id));
+    const cached = readCache<Product[]>('fbd_cache_products', DEFAULT_PRODUCTS);
+    writeCache(
+      'fbd_cache_products',
+      cached.filter((p) => p.id !== id)
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `products/${id}`);
   }
@@ -384,9 +494,9 @@ export async function saveCustomPage(
       .slice(0, 60) || id;
 
   try {
-    const snap = existingId ? await getDoc(ref) : null;
-    const createdAt =
-      snap && snap.exists() ? snap.data().createdAt : serverTimestamp();
+    const createdAt = existingId
+      ? await getExistingCreatedAt(ref)
+      : serverTimestamp();
 
     await setDoc(ref, {
       title: page.title.trim().slice(0, 80),
@@ -457,17 +567,26 @@ export async function placeCustomerOrder(
 }
 
 export function subscribeAllOrdersAdmin(
-  onData: (orders: Order[]) => void
+  onData: (orders: Order[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
   const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
   return onSnapshot(
     q,
     (snap) => {
-      onData(
-        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Order, 'id'>) }))
-      );
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Order, 'id'>),
+      }));
+      writeCache('fbd_cache_admin_orders', list);
+      onData(list);
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_admin_orders', []));
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'orders');
     }
   );
@@ -475,7 +594,8 @@ export function subscribeAllOrdersAdmin(
 
 export function subscribeMyOrders(
   uid: string,
-  onData: (orders: Order[]) => void
+  onData: (orders: Order[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
   const q = query(
     collection(db, 'orders'),
@@ -490,6 +610,11 @@ export function subscribeMyOrders(
       );
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData([]);
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'orders');
     }
   );
@@ -525,20 +650,26 @@ export async function deleteOrderAdmin(orderId: string): Promise<void> {
 
 // --- Customer Directory (Admin Only) ---
 export function subscribeCustomersAdmin(
-  onData: (customers: CustomerRecord[]) => void
+  onData: (customers: CustomerRecord[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
   const q = query(collection(db, 'customers'), orderBy('updatedAt', 'desc'));
   return onSnapshot(
     q,
     (snap) => {
-      onData(
-        snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<CustomerRecord, 'id'>),
-        }))
-      );
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<CustomerRecord, 'id'>),
+      }));
+      writeCache('fbd_cache_admin_customers', list);
+      onData(list);
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData(readCache('fbd_cache_admin_customers', []));
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'customers');
     }
   );
@@ -588,7 +719,8 @@ export async function checkIsAdminUser(uid: string): Promise<boolean> {
 }
 
 export function subscribeAdminsOwner(
-  onData: (admins: AdminUser[]) => void
+  onData: (admins: AdminUser[]) => void,
+  onQuotaExceeded?: QuotaCallback
 ): Unsubscribe {
   const q = query(collection(db, 'admins'), orderBy('createdAt', 'desc'));
   return onSnapshot(
@@ -599,6 +731,11 @@ export function subscribeAdminsOwner(
       );
     },
     (error) => {
+      if (isQuotaExceededError(error)) {
+        onQuotaExceeded?.();
+        onData([]);
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'admins');
     }
   );

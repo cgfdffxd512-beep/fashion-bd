@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { formatFirestoreUiError } from '../lib/firebase';
 import {
   applyFashionBdPreset,
   saveSiteSettings,
@@ -117,9 +118,7 @@ export function AdminDashboard({
       setSavedNotice(true);
       setTimeout(() => setSavedNotice(false), 3000);
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : 'সেটিংস সংরক্ষণ করা যায়নি।'
-      );
+      setSaveError(formatFirestoreUiError(err, 'সেটিংস সংরক্ষণ করা যায়নি।'));
     } finally {
       setSaving(false);
     }
@@ -375,9 +374,7 @@ export function AdminDashboard({
                       setTimeout(() => setSavedNotice(false), 3000);
                     } catch (err) {
                       setSaveError(
-                        err instanceof Error
-                          ? err.message
-                          : 'টেমপ্লেট লোড করা যায়নি।'
+                        formatFirestoreUiError(err, 'টেমপ্লেট লোড করা যায়নি।')
                       );
                     } finally {
                       setSaving(false);

@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Storefront } from './components/Storefront';
 import {
   auth,
+  FIRESTORE_UPGRADE_URL,
   OWNER_EMAIL,
   signInWithGooglePopup,
   signOutUser,
@@ -83,6 +84,9 @@ function StoreApp() {
   });
   const [cartOpen, setCartOpen] = useState(false);
 
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [quotaBannerDismissed, setQuotaBannerDismissed] = useState(false);
+
   const isPrimaryOwner = Boolean(
     user && user.emailVerified && user.email === OWNER_EMAIL
   );
@@ -91,10 +95,11 @@ function StoreApp() {
   // Startup connection check & public storefront subscriptions
   useEffect(() => {
     testConnection();
-    const unsubSettings = subscribeSiteSettings(setSettings);
-    const unsubCategories = subscribeCategories(setCategories);
-    const unsubProducts = subscribeProducts(setProducts);
-    const unsubPages = subscribePages(setPages);
+    const markQuota = () => setQuotaExceeded(true);
+    const unsubSettings = subscribeSiteSettings(setSettings, markQuota);
+    const unsubCategories = subscribeCategories(setCategories, markQuota);
+    const unsubProducts = subscribeProducts(setProducts, markQuota);
+    const unsubPages = subscribePages(setPages, markQuota);
 
     return () => {
       unsubSettings();
@@ -131,7 +136,7 @@ function StoreApp() {
     return () => unsub();
   }, []);
 
-  // Authenticated PII Listeners (Admin vs Shopper)
+  // Authenticated PII Listeners (only attach Admin listeners inside Admin Dashboard to save reads!)
   useEffect(() => {
     if (!authReady || !user || !user.emailVerified) {
       setOrders([]);
@@ -141,11 +146,13 @@ function StoreApp() {
       return;
     }
 
-    if (isAdmin) {
-      const unsubOrders = subscribeAllOrdersAdmin(setOrders);
-      const unsubCustomers = subscribeCustomersAdmin(setCustomers);
+    const markQuota = () => setQuotaExceeded(true);
+
+    if (isAdmin && viewMode === 'admin') {
+      const unsubOrders = subscribeAllOrdersAdmin(setOrders, markQuota);
+      const unsubCustomers = subscribeCustomersAdmin(setCustomers, markQuota);
       const unsubAdmins = isPrimaryOwner
-        ? subscribeAdminsOwner(setAdmins)
+        ? subscribeAdminsOwner(setAdmins, markQuota)
         : () => {};
       return () => {
         unsubOrders();
@@ -154,9 +161,12 @@ function StoreApp() {
       };
     }
 
-    const unsubMyOrders = subscribeMyOrders(user.uid, setMyOrders);
-    return () => unsubMyOrders();
-  }, [authReady, user, isAdmin, isPrimaryOwner]);
+    if (!isAdmin) {
+      const unsubMyOrders = subscribeMyOrders(user.uid, setMyOrders, markQuota);
+      return () => unsubMyOrders();
+    }
+    return undefined;
+  }, [authReady, user, isAdmin, isPrimaryOwner, viewMode]);
 
   // Persist Cart Locally
   useEffect(() => {
@@ -339,24 +349,71 @@ function StoreApp() {
     }
 
     return (
-      <AdminDashboard
-        settings={settings}
-        categories={categories}
-        products={products}
-        orders={orders}
-        customers={customers}
-        pages={pages}
-        admins={admins}
-        user={user}
-        isPrimaryOwner={isPrimaryOwner}
-        onExitAdmin={() => setViewMode('store')}
-        onSignOut={handleSignOut}
-      />
+      <>
+        {quotaExceeded && !quotaBannerDismissed && (
+          <div className="bg-amber-50 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-800 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-3">
+            <span>
+              Firestore দৈনিক ফ্রি রিড কোটা পূর্ণ হয়েছে — আগামীকাল কোটা পুনরায় চালু হবে। এখন ক্যাশ করা ডেটা দেখানো হচ্ছে।{' '}
+              <a
+                href={FIRESTORE_UPGRADE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline hover:opacity-80"
+              >
+                ডাটাবেস আপগ্রেড / কোটা দেখুন
+              </a>
+            </span>
+            <button
+              type="button"
+              onClick={() => setQuotaBannerDismissed(true)}
+              className="font-semibold underline shrink-0"
+            >
+              বন্ধ করুন
+            </button>
+          </div>
+        )}
+        <AdminDashboard
+          settings={settings}
+          categories={categories}
+          products={products}
+          orders={orders}
+          customers={customers}
+          pages={pages}
+          admins={admins}
+          user={user}
+          isPrimaryOwner={isPrimaryOwner}
+          onExitAdmin={() => setViewMode('store')}
+          onSignOut={handleSignOut}
+        />
+      </>
     );
   }
 
   return (
     <>
+      {quotaExceeded && isAdmin && !quotaBannerDismissed && (
+        <div className="bg-amber-50 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-800 px-4 py-2 text-xs text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            Firestore-এর আজকের ফ্রি রিড কোটা পূর্ণ হওয়ায় লাইভ ডাটাবেস থেকে আপনার যোগ করা পণ্যগুলো এখন লোড হচ্ছে না (ডাটাবেসে নিরাপদ আছে)। কোটা রিসেট হলে বা{' '}
+            <a
+              href={FIRESTORE_UPGRADE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline hover:opacity-80"
+            >
+              আপগ্রেড করলে
+            </a>{' '}
+            পণ্যগুলো স্বয়ংক্রিয়ভাবে চলে আসবে।
+          </span>
+          <button
+            type="button"
+            onClick={() => setQuotaBannerDismissed(true)}
+            className="font-semibold underline shrink-0"
+          >
+            বন্ধ করুন
+          </button>
+        </div>
+      )}
       <Storefront
         settings={settings}
         categories={categories}

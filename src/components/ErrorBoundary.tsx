@@ -1,4 +1,5 @@
 import React from 'react';
+import { isQuotaExceededError } from '../lib/firebase';
 
 interface State {
   hasError: boolean;
@@ -28,7 +29,10 @@ export class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       let friendly = 'তথ্য লোড বা সংরক্ষণের সময় একটি ত্রুটি ঘটেছে।';
-      if (this.state.message.includes('Missing or insufficient permissions')) {
+      if (isQuotaExceededError(this.state.message)) {
+        friendly =
+          'Firestore দৈনিক ফ্রি রিড/রাইট কোটা শেষ হয়ে গেছে। আগামীকাল কোটা পুনরায় চালু হবে অথবা ডাটাবেস আপগ্রেড করতে হবে।';
+      } else if (this.state.message.includes('Missing or insufficient permissions')) {
         friendly =
           'এই কাজটি করার অনুমতি আপনার অ্যাকাউন্টে নেই। অনুগ্রহ করে সঠিক অ্যাডমিন অ্যাকাউন্ট দিয়ে লগইন করুন।';
       }

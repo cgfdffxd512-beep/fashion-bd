@@ -169,10 +169,84 @@ export function Storefront({
     });
   }, [products, searchQuery]);
 
+  const { activeCatById, activeCatBySlug, activeCatByName } = useMemo(() => {
+    const byId = new Map<string, Category>();
+    const bySlug = new Map<string, Category>();
+    const byName = new Map<string, Category>();
+    for (const cat of activeCategories) {
+      byId.set(cat.id, cat);
+      if (cat.slug) bySlug.set(cat.slug.trim().toLowerCase(), cat);
+      if (cat.name) byName.set(cat.name.trim().toLowerCase(), cat);
+    }
+    return { activeCatById: byId, activeCatBySlug: bySlug, activeCatByName: byName };
+  }, [activeCategories]);
+
+  const productsByCategory = useMemo(() => {
+    const grouped = new Map<string, Product[]>();
+    for (const cat of activeCategories) {
+      grouped.set(cat.id, []);
+    }
+    const uncategorized: Product[] = [];
+
+    for (const prod of activeProducts) {
+      let targetCatId: string | null = null;
+      if (prod.categoryId && activeCatById.has(prod.categoryId)) {
+        targetCatId = prod.categoryId;
+      } else if (
+        prod.categoryId &&
+        activeCatBySlug.has(prod.categoryId.trim().toLowerCase())
+      ) {
+        targetCatId =
+          activeCatBySlug.get(prod.categoryId.trim().toLowerCase())?.id ?? null;
+      } else if (
+        prod.categoryName &&
+        activeCatByName.has(prod.categoryName.trim().toLowerCase())
+      ) {
+        targetCatId =
+          activeCatByName.get(prod.categoryName.trim().toLowerCase())?.id ?? null;
+      }
+
+      if (targetCatId && grouped.has(targetCatId)) {
+        grouped.get(targetCatId)!.push(prod);
+      } else {
+        uncategorized.push(prod);
+      }
+    }
+
+    return { grouped, uncategorized };
+  }, [activeCategories, activeProducts, activeCatById, activeCatBySlug, activeCatByName]);
+
+  const effectiveSelectedCategoryId = useMemo(() => {
+    if (selectedCategoryId === 'all') return 'all';
+    if (
+      selectedCategoryId === 'uncategorized' &&
+      productsByCategory.uncategorized.length > 0
+    ) {
+      return 'uncategorized';
+    }
+    if (activeCatById.has(selectedCategoryId)) {
+      return selectedCategoryId;
+    }
+    return 'all';
+  }, [selectedCategoryId, activeCatById, productsByCategory.uncategorized.length]);
+
   const categoriesToDisplay = useMemo(() => {
-    if (selectedCategoryId === 'all') return activeCategories;
-    return activeCategories.filter((c) => c.id === selectedCategoryId);
-  }, [activeCategories, selectedCategoryId]);
+    if (effectiveSelectedCategoryId === 'all') return activeCategories;
+    if (effectiveSelectedCategoryId === 'uncategorized') return [];
+    return activeCategories.filter((c) => c.id === effectiveSelectedCategoryId);
+  }, [activeCategories, effectiveSelectedCategoryId]);
+
+  const handleSelectCategory = (catId: string, scrollToShowcase = false) => {
+    setActivePageSlug(null);
+    setSelectedCategoryId(catId);
+    if (scrollToShowcase) {
+      setTimeout(() => {
+        document
+          .getElementById('products-showcase')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    }
+  };
 
   const surfaceBgClass =
     settings.themeMode === 'dark'
@@ -469,39 +543,40 @@ export function Storefront({
                 </h1>
                 <button
                   type="button"
-                  onClick={() => setSelectedCategoryId('all')}
+                  onClick={() => handleSelectCategory('all', true)}
                   className="text-xs sm:text-sm font-semibold hover:underline"
                   style={{ color: settings.accentColor }}
                 >
-                  {selectedCategoryId === 'all' ? 'সব দেখুন' : 'সব ক্যাটাগরি দেখুন'}
+                  {effectiveSelectedCategoryId === 'all'
+                    ? 'সব দেখুন'
+                    : 'সব ক্যাটাগরি দেখুন'}
                 </button>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {activeCategories.map((cat, idx) => {
                   const tint = PASTEL_BOX_TINTS[idx % PASTEL_BOX_TINTS.length];
-                  const catProdCount = activeProducts.filter(
-                    (p) => p.categoryId === cat.id
-                  ).length;
-                  const isSelected = selectedCategoryId === cat.id;
+                  const catProdCount =
+                    productsByCategory.grouped.get(cat.id)?.length ?? 0;
+                  const isSelected = effectiveSelectedCategoryId === cat.id;
 
                   return (
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() =>
-                        setSelectedCategoryId((prev) =>
-                          prev === cat.id ? 'all' : cat.id
-                        )
-                      }
+                      onClick={() => {
+                        const nextId = isSelected ? 'all' : cat.id;
+                        handleSelectCategory(nextId, nextId !== 'all');
+                      }}
                       className={`group text-left border ${cardSurfaceClass} rounded-2xl p-2.5 sm:p-3.5 flex items-center gap-2.5 sm:gap-3.5 shadow-sm transition-all hover:shadow-md ${
-                        isSelected
-                          ? 'ring-2 ring-offset-1'
-                          : 'hover:-translate-y-0.5'
+                        isSelected ? '' : 'hover:-translate-y-0.5'
                       }`}
                       style={
                         isSelected
-                          ? { outlineColor: settings.accentColor }
+                          ? {
+                              borderColor: settings.primaryColor,
+                              boxShadow: `0 0 0 2px ${settings.primaryColor}33`,
+                            }
                           : undefined
                       }
                     >
@@ -535,228 +610,334 @@ export function Storefront({
                   );
                 })}
               </div>
+
+              {/* Quick Category Navigation Bar */}
+              {(activeCategories.length > 0 ||
+                productsByCategory.uncategorized.length > 0) && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectCategory('all')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors shrink-0 ${
+                      effectiveSelectedCategoryId === 'all'
+                        ? 'text-white border-transparent shadow-xs'
+                        : `${cardSurfaceClass} text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800`
+                    }`}
+                    style={
+                      effectiveSelectedCategoryId === 'all'
+                        ? { backgroundColor: settings.primaryColor }
+                        : undefined
+                    }
+                  >
+                    সব পণ্য ({activeProducts.length})
+                  </button>
+
+                  {activeCategories.map((cat) => {
+                    const count =
+                      productsByCategory.grouped.get(cat.id)?.length ?? 0;
+                    const active = effectiveSelectedCategoryId === cat.id;
+                    return (
+                      <button
+                        key={`nav-${cat.id}`}
+                        type="button"
+                        onClick={() => handleSelectCategory(cat.id, true)}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors shrink-0 ${
+                          active
+                            ? 'text-white border-transparent shadow-xs'
+                            : `${cardSurfaceClass} text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800`
+                        }`}
+                        style={
+                          active
+                            ? { backgroundColor: settings.primaryColor }
+                            : undefined
+                        }
+                      >
+                        {cat.name} ({count})
+                      </button>
+                    );
+                  })}
+
+                  {productsByCategory.uncategorized.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCategory('uncategorized', true)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors shrink-0 ${
+                        effectiveSelectedCategoryId === 'uncategorized'
+                          ? 'text-white border-transparent shadow-xs'
+                          : `${cardSurfaceClass} text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800`
+                      }`}
+                      style={
+                        effectiveSelectedCategoryId === 'uncategorized'
+                          ? { backgroundColor: settings.primaryColor }
+                          : undefined
+                      }
+                    >
+                      অন্যান্য ({productsByCategory.uncategorized.length})
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
 
-            {/* Section 2: Category-by-Category Showcase Strips (matching reference screenshot) */}
-            {categoriesToDisplay.map((cat, catIdx) => {
-              const catProducts = activeProducts.filter(
-                (p) => p.categoryId === cat.id
-              );
-              if (catProducts.length === 0) return null;
-              const tint = PASTEL_BOX_TINTS[catIdx % PASTEL_BOX_TINTS.length];
-              const totalStock = catProducts.reduce(
-                (sum, item) => sum + item.stock,
-                0
-              );
+            {/* Section 2: Category-by-Category Showcase Strips */}
+            <div id="products-showcase" className="space-y-6 scroll-mt-20">
+              {categoriesToDisplay.map((cat, catIdx) => {
+                const catProducts = productsByCategory.grouped.get(cat.id) ?? [];
+                const isSingleSelected = effectiveSelectedCategoryId === cat.id;
+                if (catProducts.length === 0 && !isSingleSelected) return null;
 
-              return (
-                <section key={cat.id} className="space-y-3.5">
-                  {/* Centered Soft Pastel Category Header Strip */}
-                  <div
-                    className={`w-full rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-gradient-to-r ${tint.headerGrad} py-2.5 px-4 flex items-center justify-center gap-2.5 shadow-xs`}
-                  >
-                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                    <h2
-                      className="text-sm sm:text-base font-bold text-center"
-                      style={{
-                        color:
-                          settings.themeMode === 'dark'
-                            ? '#F8FAFC'
-                            : settings.accentColor,
-                        ...displayFontStyle,
-                      }}
+                const originalIdx = Math.max(
+                  0,
+                  activeCategories.findIndex((c) => c.id === cat.id)
+                );
+                const tint =
+                  PASTEL_BOX_TINTS[(originalIdx || catIdx) % PASTEL_BOX_TINTS.length];
+                const totalStock = catProducts.reduce(
+                  (sum, item) => sum + item.stock,
+                  0
+                );
+
+                return (
+                  <section key={cat.id} className="space-y-3.5">
+                    {/* Centered Soft Pastel Category Header Strip */}
+                    <div
+                      className={`w-full rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-gradient-to-r ${tint.headerGrad} py-2.5 px-4 flex items-center justify-center gap-2.5 shadow-xs`}
                     >
-                      {cat.name} ({totalStock > 0 ? totalStock : catProducts.length})
-                    </h2>
-                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                  </div>
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                      <h2
+                        className="text-sm sm:text-base font-bold text-center"
+                        style={{
+                          color:
+                            settings.themeMode === 'dark'
+                              ? '#F8FAFC'
+                              : settings.accentColor,
+                          ...displayFontStyle,
+                        }}
+                      >
+                        {cat.name} ({totalStock > 0 ? totalStock : catProducts.length})
+                      </h2>
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                    </div>
 
-                  {/* 4-Column Product Grid on Mobile & Desktop matching Reference */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
-                    {catProducts.map((product, pIdx) => {
-                      const swatch =
-                        CARD_SWATCH_TINTS[pIdx % CARD_SWATCH_TINTS.length];
-                      const hasDiscount =
-                        product.discountPrice > 0 &&
-                        product.discountPrice < product.price;
-                      const effectivePrice = hasDiscount
-                        ? product.discountPrice
-                        : product.price;
-                      const outOfStock = product.stock <= 0;
-
-                      return (
-                        <article
-                          key={product.id}
-                          className={`group border ${cardSurfaceClass} rounded-2xl p-2 sm:p-3 flex flex-col justify-between shadow-sm hover:shadow-md transition-all`}
+                    {catProducts.length === 0 ? (
+                      <div
+                        className={`border ${cardSurfaceClass} rounded-2xl p-8 text-center space-y-3`}
+                      >
+                        <p className="text-sm text-slate-500">
+                          "{cat.name}" ক্যাটাগরিতে বর্তমানে কোনো পণ্য পাওয়া যায়নি।
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            handleSelectCategory('all');
+                          }}
+                          className="px-4 py-2 text-xs font-semibold rounded-xl text-white"
+                          style={{ backgroundColor: settings.primaryColor }}
                         >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProduct(product)}
-                            className="text-left w-full block"
-                          >
-                            {/* Pastel Image Box with top-right stock count chip */}
-                            <div
-                              className={`relative aspect-square rounded-xl overflow-hidden ${swatch}`}
+                          সব পণ্য দেখুন
+                        </button>
+                      </div>
+                    ) : (
+                      /* 4-Column Product Grid on Mobile & Desktop */
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+                        {catProducts.map((product, pIdx) => {
+                          const swatch =
+                            CARD_SWATCH_TINTS[pIdx % CARD_SWATCH_TINTS.length];
+                          const hasDiscount =
+                            product.discountPrice > 0 &&
+                            product.discountPrice < product.price;
+                          const effectivePrice = hasDiscount
+                            ? product.discountPrice
+                            : product.price;
+                          const outOfStock = product.stock <= 0;
+
+                          return (
+                            <article
+                              key={product.id}
+                              className={`group border ${cardSurfaceClass} rounded-2xl p-2 sm:p-3 flex flex-col justify-between shadow-sm hover:shadow-md transition-all`}
                             >
-                              <SmartImage
-                                src={product.imageUrl}
-                                alt={product.name}
-                                fallbackLabel={product.name}
-                                className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-                              />
-                              <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 text-[10px] font-semibold tabular-nums shadow-xs">
-                                {outOfStock ? '০' : product.stock}
-                              </span>
-                            </div>
-
-                            {/* Centered Product Name */}
-                            <div className="mt-2.5 text-center space-y-1 px-0.5">
-                              <h3 className="text-xs sm:text-sm font-bold leading-snug line-clamp-2">
-                                {product.name}
-                              </h3>
-                              <div className="flex items-center justify-center gap-1.5 text-xs tabular-nums">
-                                <span
-                                  className="font-bold"
-                                  style={{ color: settings.primaryColor }}
-                                >
-                                  {currency}
-                                  {effectivePrice.toLocaleString('en-US')}
-                                </span>
-                                {hasDiscount && (
-                                  <span className="text-[11px] text-slate-400 line-through">
-                                    {currency}
-                                    {product.price.toLocaleString('en-US')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={outOfStock}
-                            onClick={() =>
-                              onAddToCart(
-                                product,
-                                1,
-                                product.sizes[0] || '',
-                                product.colors[0] || '',
-                                false
-                              )
-                            }
-                            className="mt-2.5 w-full py-1.5 px-2 text-[11px] sm:text-xs font-semibold rounded-xl text-white transition-opacity hover:opacity-90 disabled:opacity-45"
-                            style={{ backgroundColor: settings.primaryColor }}
-                          >
-                            {outOfStock ? 'স্টক নেই' : 'ব্যাগে যোগ করুন'}
-                          </button>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-
-            {/* Uncategorized / Other Active Products if any */}
-            {(() => {
-              const catIds = new Set(activeCategories.map((c) => c.id));
-              const others = activeProducts.filter(
-                (p) => !catIds.has(p.categoryId)
-              );
-              if (others.length === 0 || selectedCategoryId !== 'all') {
-                return null;
-              }
-              return (
-                <section className="space-y-3.5">
-                  <div className="w-full rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900 py-2.5 px-4 flex items-center justify-center gap-2">
-                    <h2 className="text-sm sm:text-base font-bold">
-                      অন্যান্য কালেকশন ({others.length})
-                    </h2>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
-                    {others.map((product) => {
-                      const hasDiscount =
-                        product.discountPrice > 0 &&
-                        product.discountPrice < product.price;
-                      const effectivePrice = hasDiscount
-                        ? product.discountPrice
-                        : product.price;
-                      return (
-                        <article
-                          key={product.id}
-                          className={`border ${cardSurfaceClass} rounded-2xl p-2 sm:p-3 flex flex-col justify-between shadow-sm`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedProduct(product)}
-                            className="text-left w-full"
-                          >
-                            <div className="aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800">
-                              <SmartImage
-                                src={product.imageUrl}
-                                alt={product.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <div className="mt-2 text-center space-y-0.5">
-                              <h3 className="text-xs sm:text-sm font-bold line-clamp-2">
-                                {product.name}
-                              </h3>
-                              <div
-                                className="text-xs font-bold tabular-nums"
-                                style={{ color: settings.primaryColor }}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProduct(product)}
+                                className="text-left w-full block"
                               >
-                                {currency}
-                                {effectivePrice.toLocaleString('en-US')}
-                              </div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={product.stock <= 0}
-                            onClick={() =>
-                              onAddToCart(
-                                product,
-                                1,
-                                product.sizes[0] || '',
-                                product.colors[0] || '',
-                                false
-                              )
-                            }
-                            className="mt-2 w-full py-1.5 text-[11px] font-semibold rounded-xl text-white"
-                            style={{ backgroundColor: settings.primaryColor }}
-                          >
-                            {product.stock <= 0 ? 'স্টক নেই' : 'ব্যাগে যোগ করুন'}
-                          </button>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })()}
+                                <div
+                                  className={`relative aspect-square rounded-xl overflow-hidden ${swatch}`}
+                                >
+                                  <SmartImage
+                                    src={product.imageUrl}
+                                    alt={product.name}
+                                    fallbackLabel={product.name}
+                                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                                  />
+                                  <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 text-[10px] font-semibold tabular-nums shadow-xs">
+                                    {outOfStock ? '০' : product.stock}
+                                  </span>
+                                </div>
 
-            {/* Empty State when Search has no results */}
-            {activeProducts.length === 0 && (
-              <div
-                className={`border ${cardSurfaceClass} rounded-2xl p-10 text-center space-y-3`}
-              >
-                <p className="text-sm text-slate-500">
-                  কোনো পণ্য পাওয়া যায়নি।
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedCategoryId('all');
-                  }}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl text-white"
-                  style={{ backgroundColor: settings.primaryColor }}
+                                <div className="mt-2.5 text-center space-y-1 px-0.5">
+                                  <h3 className="text-xs sm:text-sm font-bold leading-snug line-clamp-2">
+                                    {product.name}
+                                  </h3>
+                                  <div className="flex items-center justify-center gap-1.5 text-xs tabular-nums">
+                                    <span
+                                      className="font-bold"
+                                      style={{ color: settings.primaryColor }}
+                                    >
+                                      {currency}
+                                      {effectivePrice.toLocaleString('en-US')}
+                                    </span>
+                                    {hasDiscount && (
+                                      <span className="text-[11px] text-slate-400 line-through">
+                                        {currency}
+                                        {product.price.toLocaleString('en-US')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={outOfStock}
+                                onClick={() =>
+                                  onAddToCart(
+                                    product,
+                                    1,
+                                    product.sizes[0] || '',
+                                    product.colors[0] || '',
+                                    false
+                                  )
+                                }
+                                className="mt-2.5 w-full py-1.5 px-2 text-[11px] sm:text-xs font-semibold rounded-xl text-white transition-opacity hover:opacity-90 disabled:opacity-45"
+                                style={{ backgroundColor: settings.primaryColor }}
+                              >
+                                {outOfStock ? 'স্টক নেই' : 'ব্যাগে যোগ করুন'}
+                              </button>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+
+              {/* Uncategorized / Other Active Products if any */}
+              {productsByCategory.uncategorized.length > 0 &&
+                (effectiveSelectedCategoryId === 'all' ||
+                  effectiveSelectedCategoryId === 'uncategorized') && (
+                  <section className="space-y-3.5">
+                    <div className="w-full rounded-2xl border border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900 py-2.5 px-4 flex items-center justify-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                      <h2 className="text-sm sm:text-base font-bold">
+                        অন্যান্য কালেকশন ({productsByCategory.uncategorized.length})
+                      </h2>
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+                      {productsByCategory.uncategorized.map((product, pIdx) => {
+                        const swatch =
+                          CARD_SWATCH_TINTS[pIdx % CARD_SWATCH_TINTS.length];
+                        const hasDiscount =
+                          product.discountPrice > 0 &&
+                          product.discountPrice < product.price;
+                        const effectivePrice = hasDiscount
+                          ? product.discountPrice
+                          : product.price;
+                        const outOfStock = product.stock <= 0;
+
+                        return (
+                          <article
+                            key={product.id}
+                            className={`group border ${cardSurfaceClass} rounded-2xl p-2 sm:p-3 flex flex-col justify-between shadow-sm hover:shadow-md transition-all`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProduct(product)}
+                              className="text-left w-full block"
+                            >
+                              <div
+                                className={`relative aspect-square rounded-xl overflow-hidden ${swatch}`}
+                              >
+                                <SmartImage
+                                  src={product.imageUrl}
+                                  alt={product.name}
+                                  fallbackLabel={product.name}
+                                  className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                                />
+                                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 text-[10px] font-semibold tabular-nums shadow-xs">
+                                  {outOfStock ? '০' : product.stock}
+                                </span>
+                              </div>
+                              <div className="mt-2.5 text-center space-y-1 px-0.5">
+                                <h3 className="text-xs sm:text-sm font-bold leading-snug line-clamp-2">
+                                  {product.name}
+                                </h3>
+                                <div className="flex items-center justify-center gap-1.5 text-xs tabular-nums">
+                                  <span
+                                    className="font-bold"
+                                    style={{ color: settings.primaryColor }}
+                                  >
+                                    {currency}
+                                    {effectivePrice.toLocaleString('en-US')}
+                                  </span>
+                                  {hasDiscount && (
+                                    <span className="text-[11px] text-slate-400 line-through">
+                                      {currency}
+                                      {product.price.toLocaleString('en-US')}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={outOfStock}
+                              onClick={() =>
+                                onAddToCart(
+                                  product,
+                                  1,
+                                  product.sizes[0] || '',
+                                  product.colors[0] || '',
+                                  false
+                                )
+                              }
+                              className="mt-2.5 w-full py-1.5 px-2 text-[11px] sm:text-xs font-semibold rounded-xl text-white transition-opacity hover:opacity-90 disabled:opacity-45"
+                              style={{ backgroundColor: settings.primaryColor }}
+                            >
+                              {outOfStock ? 'স্টক নেই' : 'ব্যাগে যোগ করুন'}
+                            </button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+              {/* Empty State when Search has no results */}
+              {effectiveSelectedCategoryId === 'all' && activeProducts.length === 0 && (
+                <div
+                  className={`border ${cardSurfaceClass} rounded-2xl p-10 text-center space-y-3`}
                 >
-                  সব পণ্য দেখুন
-                </button>
-              </div>
-            )}
+                  <p className="text-sm text-slate-500">
+                    কোনো পণ্য পাওয়া যায়নি।
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      handleSelectCategory('all');
+                    }}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl text-white"
+                    style={{ backgroundColor: settings.primaryColor }}
+                  >
+                    সব পণ্য দেখুন
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Offer Campaign Strip (when enabled in Admin) */}
             {settings.offerEnabled && settings.offerTitle && (

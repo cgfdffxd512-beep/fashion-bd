@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   CreditCard,
+  Download,
   ExternalLink,
   FileText,
   FolderTree,
@@ -13,6 +14,7 @@ import {
   Menu,
   Package,
   Palette,
+  RefreshCw,
   Save,
   Shield,
   ShoppingCart,
@@ -21,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { formatFirestoreUiError } from '../lib/firebase';
+import { FIRESTORE_UPGRADE_URL, formatFirestoreUiError } from '../lib/firebase';
 import {
   applyFashionBdPreset,
   saveSiteSettings,
@@ -69,6 +71,11 @@ interface AdminDashboardProps {
   admins: AdminUser[];
   user: User;
   isPrimaryOwner: boolean;
+  syncStatus: 'connecting' | 'live' | 'quota';
+  liveProductCount: number | null;
+  syncingNow: boolean;
+  syncMessage: string;
+  onRetrySync: () => void;
   onExitAdmin: () => void;
   onSignOut: () => void;
 }
@@ -92,6 +99,11 @@ export function AdminDashboard({
   admins,
   user,
   isPrimaryOwner,
+  syncStatus,
+  liveProductCount,
+  syncingNow,
+  syncMessage,
+  onRetrySync,
   onExitAdmin,
   onSignOut,
 }: AdminDashboardProps) {
@@ -122,6 +134,32 @@ export function AdminDashboard({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDownloadJsonBackup = () => {
+    const backupPayload = {
+      exportedAt: new Date().toISOString(),
+      syncStatus,
+      siteName: settings.siteName,
+      settings,
+      categories,
+      products,
+      pages,
+      orders,
+      customers,
+      admins,
+    };
+    const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fashion-bd-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const navItems: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
@@ -385,6 +423,59 @@ export function AdminDashboard({
                   <Sparkles className="w-3.5 h-3.5" />
                   Fashion BD থিম ও ক্যাটাগরি লোড করুন
                 </button>
+              </div>
+
+              {/* Live Firestore Sync Diagnostics Card */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5 text-xs">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    ডাটাবেস সংযোগ অবস্থা:{' '}
+                    {syncStatus === 'live' ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        লাইভ Firestore সংযুক্ত (সার্ভারে {liveProductCount ?? products.length}টি পণ্য)
+                      </span>
+                    ) : syncStatus === 'quota' ? (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        দৈনিক ফ্রি রিড কোটা পূর্ণ (ক্যাশ/টেমপ্লেট দেখাচ্ছে)
+                      </span>
+                    ) : (
+                      <span className="text-slate-500">সংযোগ যাচাই হচ্ছে...</span>
+                    )}
+                  </div>
+                  {syncMessage && (
+                    <div className="text-slate-600 dark:text-slate-400">
+                      {syncMessage}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleDownloadJsonBackup}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    ডাটাবেস ব্যাকআপ (JSON)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={syncingNow}
+                    onClick={onRetrySync}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingNow ? 'animate-spin' : ''}`} />
+                    {syncingNow ? 'লোড হচ্ছে...' : 'ডাটাবেস থেকে রিলোড'}
+                  </button>
+                  <a
+                    href={FIRESTORE_UPGRADE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Firestore দেখুন
+                  </a>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

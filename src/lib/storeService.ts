@@ -4,6 +4,8 @@ import {
   doc,
   getDoc,
   getDocFromCache,
+  getDocFromServer,
+  getDocsFromServer,
   onSnapshot,
   orderBy,
   query,
@@ -90,15 +92,69 @@ export function slugifyId(input: string, prefix = 'item'): string {
   return cleaned ? `${cleaned}-${rand}` : `${prefix}-${Date.now()}-${rand}`;
 }
 
+export interface LiveSyncSnapshot {
+  settings: SiteSettings | null;
+  categories: Category[];
+  products: Product[];
+  pages: CustomPage[];
+}
+
+export async function refreshCatalogFromServer(): Promise<
+  | { ok: true; data: LiveSyncSnapshot }
+  | { ok: false; isQuota: boolean; message: string }
+> {
+  try {
+    const [settingsSnap, catSnap, prodSnap, pageSnap] = await Promise.all([
+      getDocFromServer(doc(db, 'settings', 'site')),
+      getDocsFromServer(collection(db, 'categories')),
+      getDocsFromServer(collection(db, 'products')),
+      getDocsFromServer(collection(db, 'pages')),
+    ]);
+
+    const settings = settingsSnap.exists()
+      ? { ...DEFAULT_SETTINGS, ...(settingsSnap.data() as SiteSettings) }
+      : null;
+    if (settings) writeCache('fbd_cache_settings', settings);
+
+    const categories = catSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<Category, 'id'>) }))
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+    if (categories.length > 0) writeCache('fbd_cache_categories', categories);
+
+    const products = prodSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<Product, 'id'>) }))
+      .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt));
+    if (products.length > 0) writeCache('fbd_cache_products', products);
+
+    const pages = pageSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomPage, 'id'>) }))
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+    if (pages.length > 0) writeCache('fbd_cache_pages', pages);
+
+    return {
+      ok: true,
+      data: { settings, categories, products, pages },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      isQuota: isQuotaExceededError(error),
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // --- Public Storefront Subscriptions ---
 export function subscribeSiteSettings(
   onData: (settings: SiteSettings) => void,
-  onQuotaExceeded?: QuotaCallback
+  onQuotaExceeded?: QuotaCallback,
+  onLiveSync?: () => void
 ): Unsubscribe {
   const ref = doc(db, 'settings', 'site');
   return onSnapshot(
     ref,
     (snap) => {
+      if (!snap.metadata.fromCache) onLiveSync?.();
       if (snap.exists()) {
         const merged = { ...DEFAULT_SETTINGS, ...(snap.data() as SiteSettings) };
         writeCache('fbd_cache_settings', merged);
@@ -121,12 +177,14 @@ export function subscribeSiteSettings(
 
 export function subscribeCategories(
   onData: (categories: Category[]) => void,
-  onQuotaExceeded?: QuotaCallback
+  onQuotaExceeded?: QuotaCallback,
+  onLiveSync?: (count: number) => void
 ): Unsubscribe {
   const q = query(collection(db, 'categories'));
   return onSnapshot(
     q,
     (snap) => {
+      if (!snap.metadata.fromCache) onLiveSync?.(snap.docs.length);
       if (snap.empty) {
         onData(readCache('fbd_cache_categories', DEFAULT_CATEGORIES));
       } else {
@@ -153,12 +211,14 @@ export function subscribeCategories(
 
 export function subscribeProducts(
   onData: (products: Product[]) => void,
-  onQuotaExceeded?: QuotaCallback
+  onQuotaExceeded?: QuotaCallback,
+  onLiveSync?: (count: number) => void
 ): Unsubscribe {
   const q = query(collection(db, 'products'));
   return onSnapshot(
     q,
     (snap) => {
+      if (!snap.metadata.fromCache) onLiveSync?.(snap.docs.length);
       if (snap.empty) {
         onData(readCache('fbd_cache_products', DEFAULT_PRODUCTS));
       } else {
@@ -185,12 +245,14 @@ export function subscribeProducts(
 
 export function subscribePages(
   onData: (pages: CustomPage[]) => void,
-  onQuotaExceeded?: QuotaCallback
+  onQuotaExceeded?: QuotaCallback,
+  onLiveSync?: (count: number) => void
 ): Unsubscribe {
   const q = query(collection(db, 'pages'));
   return onSnapshot(
     q,
     (snap) => {
+      if (!snap.metadata.fromCache) onLiveSync?.(snap.docs.length);
       if (snap.empty) {
         onData(readCache('fbd_cache_pages', DEFAULT_PAGES));
       } else {

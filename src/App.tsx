@@ -16,6 +16,7 @@ import {
 import {
   checkIsAdminUser,
   ensureSeededStoreData,
+  refreshCatalogFromServer,
   subscribeAdminsOwner,
   subscribeAllOrdersAdmin,
   subscribeCategories,
@@ -86,19 +87,63 @@ function StoreApp() {
 
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const [quotaBannerDismissed, setQuotaBannerDismissed] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'connecting' | 'live' | 'quota'>('connecting');
+  const [liveProductCount, setLiveProductCount] = useState<number | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
 
   const isPrimaryOwner = Boolean(
     user && user.emailVerified && user.email === OWNER_EMAIL
   );
   const isAdmin = isPrimaryOwner || isDelegatedAdmin;
 
+  const handleRetrySync = async () => {
+    setSyncingNow(true);
+    setSyncMessage('');
+    const result = await refreshCatalogFromServer();
+    if (result.ok) {
+      setQuotaExceeded(false);
+      setSyncStatus('live');
+      setLiveProductCount(result.data.products.length);
+      if (result.data.settings) setSettings(result.data.settings);
+      if (result.data.categories.length > 0) setCategories(result.data.categories);
+      if (result.data.products.length > 0) setProducts(result.data.products);
+      if (result.data.pages.length > 0) setPages(result.data.pages);
+      setSyncMessage(
+        result.data.products.length > 0
+          ? `Firestore থেকে ${result.data.products.length}টি পণ্য লোড হয়েছে।`
+          : 'ডাটাবেস সংযুক্ত হয়েছে, তবে products কালেকশন খালি (০টি পণ্য)।'
+      );
+    } else {
+      if (result.isQuota) {
+        setQuotaExceeded(true);
+        setSyncStatus('quota');
+        setSyncMessage('Firestore দৈনিক রিড কোটা এখনো পূর্ণ আছে।');
+      } else {
+        setSyncMessage(`ডাটাবেস সিঙ্ক সমস্যা: ${result.message}`);
+      }
+    }
+    setSyncingNow(false);
+  };
+
   // Startup connection check & public storefront subscriptions
   useEffect(() => {
     testConnection();
-    const markQuota = () => setQuotaExceeded(true);
+    const markQuota = () => {
+      setQuotaExceeded(true);
+      setSyncStatus('quota');
+    };
     const unsubSettings = subscribeSiteSettings(setSettings, markQuota);
     const unsubCategories = subscribeCategories(setCategories, markQuota);
-    const unsubProducts = subscribeProducts(setProducts, markQuota);
+    const unsubProducts = subscribeProducts(
+      setProducts,
+      markQuota,
+      (count) => {
+        setQuotaExceeded(false);
+        setSyncStatus('live');
+        setLiveProductCount(count);
+      }
+    );
     const unsubPages = subscribePages(setPages, markQuota);
 
     return () => {
@@ -363,13 +408,23 @@ function StoreApp() {
                 ডাটাবেস আপগ্রেড / কোটা দেখুন
               </a>
             </span>
-            <button
-              type="button"
-              onClick={() => setQuotaBannerDismissed(true)}
-              className="font-semibold underline shrink-0"
-            >
-              বন্ধ করুন
-            </button>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                disabled={syncingNow}
+                onClick={handleRetrySync}
+                className="font-semibold underline hover:opacity-80 disabled:opacity-50"
+              >
+                {syncingNow ? 'চেক হচ্ছে...' : 'আবার চেষ্টা করুন'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuotaBannerDismissed(true)}
+                className="font-semibold underline"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
           </div>
         )}
         <AdminDashboard
@@ -382,6 +437,11 @@ function StoreApp() {
           admins={admins}
           user={user}
           isPrimaryOwner={isPrimaryOwner}
+          syncStatus={syncStatus}
+          liveProductCount={liveProductCount}
+          syncingNow={syncingNow}
+          syncMessage={syncMessage}
+          onRetrySync={handleRetrySync}
           onExitAdmin={() => setViewMode('store')}
           onSignOut={handleSignOut}
         />
@@ -405,13 +465,23 @@ function StoreApp() {
             </a>{' '}
             পণ্যগুলো স্বয়ংক্রিয়ভাবে চলে আসবে।
           </span>
-          <button
-            type="button"
-            onClick={() => setQuotaBannerDismissed(true)}
-            className="font-semibold underline shrink-0"
-          >
-            বন্ধ করুন
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              disabled={syncingNow}
+              onClick={handleRetrySync}
+              className="font-semibold underline hover:opacity-80 disabled:opacity-50"
+            >
+              {syncingNow ? 'চেক হচ্ছে...' : 'আবার চেষ্টা করুন'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuotaBannerDismissed(true)}
+              className="font-semibold underline"
+            >
+              বন্ধ করুন
+            </button>
+          </div>
         </div>
       )}
       <Storefront
